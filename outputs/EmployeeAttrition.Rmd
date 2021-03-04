@@ -1,0 +1,779 @@
+---
+title: "IBM HR Employee Attrition & Performace Analysis "
+author: "Jialin Zhao"
+abstract:"In this project, we primarily examine the possible factors that lead to employee attrition and also train different machine learning classifiers to predict who is going to resign, based on the dataset “IBM HR Analytics Employee Attrition & Performance” loaded from Kaggle. According to our literature reviews, Random Forest (RF) is an effective classifier due to its strength in handling multi-dimensional data, therefore, to verify that and to identify the best algorithm, we went deeper into the classification predictive modelling for the attrition issue by further examining 6 popular machine learning models, namely the K Nearest Neighbours (KNN), the Support Vector Machine (SVM), the Naive Bayes (NB), the Logistic Regression, the Ensemble model, and the RF. By comparing and assessing the prediction accuracy of each model, we concluded the ensemble model was the best classifier to predict employee attrition since it possesses the highest prediction accuracy overall."
+thanks: "Code and data are available at: https://github.com/PopeyesIsTheBest/Employee-Attrition-Performance-Analysis"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output: pdf_document
+  bookdown::pdf_document2:
+---
+
+#### Workspace set-up ####
+# Install required packages
+```{r}
+#install.packages('data.table')
+#install.packages('coefplot')
+#install.packages("tidyverse")
+#install.packages("dummies")
+#install.packages("MASS")
+#install.packages("leaps")
+#install.packages("FNN")
+#install.packages("class")
+#install.packages("caret")
+#install.packages("gmodels")
+#install.packages('gridExtra')
+#install.packages('e1071')
+#install.packages("kableExtra")
+#install.packages("bookdown")
+#install.packages('here')
+```
+
+```{r}
+library(here)
+library(tidyverse)
+library(bookdown)
+library(kableExtra)
+```
+
+# Introduction
+In this project, the research topic is to build up a model and analyse the reasons for employee resignation and the influence factors that affect this variable mostly. According to questioning on business operating costs, the cost of turnover and employee training is often massive. Therefore, it is crucial for a company to decrease the turnover rate and retain the best-performing employees. Before hiring an employee, if the human resource department can obtain the prediction result that whether this candidate will leave the company soon or will stay for a long time, it will be an efficient method to control the cost and reduce the risk. Based on this scenario, our group decides to apply machine learning and data analysis into a dataset called WA_Fn-UseC_-HR-Employee-Attrition[@dataset] and develop a best model with the highest accuracy to deal with the problem for the company.
+By reviewing the dataset, there are 51 independent variables and 1 dependent variable (attrition) which is a factor type variable indicating quit or stay. Therefore,
+after discussion, building up models---KNN, Random Forest, SVM, NB, Logistic Regression, and Ensemble Model is the first step to test which model is a more suitable model to make predictions for. Second, by feature selection, the variable mostly impacting the candidate's decision of leave or stay will be extracted to implement data analysis. By the data analysis, it can conduct a detailed data exploration so that some solution or modification can be discovered and be applied to recruitment policy for handling the problem of employees’ quitting job.
+In conclusion, during the process of modelling and analysis, the company can apply this model when hiring a new employee and improve the company employee retention rate by changing policy based on feedback from the model.
+
+
+
+# Data
+The presented data set in this case is derived from Kaggle and is artificially created by IBM data scientists that possess similar features of the state of attrition at the workplace and other associated attributes toward employees. 
+### Step 1_Read Dataset
+## Loading dataset
+```{r}
+Employee <- read_csv(here::here("inputs/data/Employee.csv"))
+employee <- Employee
+str(employee)           # overview the original dataframe
+
+# The employee data frame consists of 35 attributes that are in either int
+# or chr data type
+
+```
+
+Check missing values
+```{r}
+sum(is.na(employee))
+
+# we are lucky to find there is not any missing data in the dataset 
+```
+
+
+### Step 2_Data Preprocessing
+## Dropping columns
+
+EmployeeCount(meaningless column all ones)
+EmployeeNumber(function as ID, irrelevant data to the prediction model)
+Over18(meaningless column all Y)
+StandardHours(meaningless column all 80)
+```{r}
+# Dropping irrelevant columns
+# EmployeeCount, EmployeeNumber, Over18 and StandardHours 
+
+employee <- employee[,-c(9,10,22,27)]
+```
+
+
+## Categorical variables re-encoding
+# Dependent variable
+Attrition: 1. Yes
+           0. No
+```{r}
+# Convert Attrition into factor data type, and set levels as 1 and 0
+
+employee$Attrition <- ifelse(employee$Attrition == "Yes", 1, 0)
+employee$Attrition <- factor(employee$Attrition, levels = c("1","0"), 
+                        labels = c("1","0"))
+levels(employee$Attrition)
+```
+
+# IDVs
+Continous variables
+
+Age, DailyRate, DistanceFromHome, HourlyRate, MonthlyIncome, MonthlyRate, 
+NumCompaniesWorked, PercentSalaryHike, TotalWorkingYears, TrainingTimesLastYear,
+YearsAtCompany, YearsInCurrentRole, YearsSinceLastPromotion, YearsWithCurrManager
+
+
+Categorical variables
+
+BusinessTravel: 1. Non-Travel
+                2. Travel_Rarely
+                3. Travel_Frequently
+```{r}
+# Since BusinessTravel is a ordinal variable, re-encode it numerically as 1,2,3
+# will still make sense
+
+employee$BusinessTravel[employee$BusinessTravel == "Non-Travel"] <- 1
+employee$BusinessTravel[employee$BusinessTravel == "Travel_Rarely"] <- 2
+employee$BusinessTravel[employee$BusinessTravel == "Travel_Frequently"] <- 3
+
+employee$BusinessTravel <- as.numeric(employee$BusinessTravel)
+```
+
+Department:     1. Sales
+                2. Research & Development
+                3. Human Resources
+```{r}
+# Department as a nominal variable, there is no order inside this variable 
+# So re-encode it as dummy variable will give us the same distance between any
+# pair of values
+
+library(dummies)
+employee <- dummy.data.frame(employee, names = c("Department"), sep = "_")
+```
+
+Education:      1. Below College
+                2. College
+                3. Bachelor
+                4. Master
+                5. Doctor
+```{r}
+# Education is a ordinal variable and it is already in the int data type, 
+# so no need to encode it
+```
+
+EducationField: 1. Human Resources
+                2. Life Sciences
+                3. Medical
+                4. Marketing
+                5. Technical Degree
+                6. Other
+```{r}
+# EducationField as a nominal variable, so re-encode it as dummy variable 
+
+employee <- dummy.data.frame(employee, names = c("EducationField"), sep = "_")
+```
+
+EnvironmentSatisfaction: 1. Low
+                         2. Medium
+                         3. High
+                         4. Very High
+```{r}
+# EnvironmentSatisfaction is a ordinal variable and 
+# it is already in the int data type, so no need to encode it
+```
+
+Gender:      1. Female
+             2. Male
+```{r}
+# Gender as a nominal variable, so re-encode it as dummy variable 
+
+employee <- dummy.data.frame(employee, names = c("Gender"), sep = "_")
+```
+
+JobInvolvement:          1. Low
+                         2. Medium
+                         3. High
+                         4. Very High
+```{r}
+# JobInvolvement is a ordinal variable and it is already in the int data type, 
+# so no need to encode it
+```
+
+JobLevel:       1. 
+                2. 
+                3. 
+                4. 
+                5.
+missing description for each category from the original data set
+```{r}
+# JobLevel is a ordinal variable and it is already in the int data type, 
+# so no need to encode it
+```
+
+JobSatisfaction:1. Low
+                2. Medium
+                3. High
+                4. Very High 
+```{r}
+# JobSatisfaction is a ordinal variable and it is already in the int data type, 
+# so no need to encode it
+```
+
+
+JobRole:        1. Healthcare Representative
+                2. Human Resources
+                3. Laboratory Technician
+                4. Manager
+                5. Manufacturing Director
+                6. Research Director
+                7. Research Scientist
+                8. Sales Executive
+                9. Sales Representative
+```{r}
+# JobRole as a nominal variable, so re-encode it as dummy variable 
+
+employee <- dummy.data.frame(employee, names = c("JobRole"), sep = "_")
+```
+
+MaritalStatus:1. Single
+              2. Married
+              3. Divorced
+```{r}
+# MaritalStatus as a nominal variable, so re-encode it as dummy variable 
+
+employee <- dummy.data.frame(employee, names = c("MaritalStatus"), sep = "_")
+```
+
+OverTime:    1. Yes
+             2. No
+```{r}
+# OverTime as a nominal variable, so re-encode it as dummy variable 
+
+employee <- dummy.data.frame(employee, names = c("OverTime"), sep = "_")
+```
+
+PerformanceRating: 1. Low
+                   2. Good
+                   3. Excellent
+                   4. Outstanding
+```{r}
+# PerformanceRating is a ordinal variable and it is already in the int data type,
+# so no need to encode it
+```
+
+RelationshipSatisfaction: 1. Low
+                          2. Medium
+                          3. High
+                          4. Very High 
+```{r}
+# RelationshipSatisfaction is a ordinal variable and it is already in the int 
+# data type, so no need to encode it
+```
+
+StockOptionLevel: 0. 
+                  1. 
+                  2. 
+                  3.
+missing description for each category from the original data set
+```{r}
+# StockOptionLevel is a ordinal variable and it is already in the int
+# data type,so no need to encode it
+```
+
+WorkLifeBalance: 1. Bad
+                 2. Good
+                 3. Better
+                 4. Best
+```{r}
+# WorkLifeBalance is a ordinal variable and it is already in the int 
+# data type, so no need to encode it
+```
+
+## Data normalization
+```{r}
+# Apply normalization function to the employee dataframe
+
+normalize <- function(x) {
+               return ((x - min(x)) / (max(x) - min(x))) }
+
+employee_nl<- as.data.frame(lapply(employee[,c(1,3:50)], normalize))
+
+employee_nl$Attrition<- employee$Attrition
+```
+
+## Overviewing the data frame
+```{r}
+str(employee_nl)
+```
+
+### Exploratory Data Analysis
+```{r}
+# loading library
+library(dplyr)
+library(gridExtra)
+library(grid)
+library(ggplot2)
+library(data.table)
+library(coefplot)
+```
+
+Display the attrition status for all employees
+```{r}
+# Display the number of employees who resign and not resign
+
+attritionnumbers <- employee %>%
+group_by(Attrition) %>%
+summarise(count = n()) %>%
+ggplot(aes(x=Attrition, y=count)) + 
+geom_bar(stat="identity", fill = "orange", color = "grey40") +
+theme_bw() +
+coord_flip() + 
+geom_text(aes(x = Attrition, y = 0.01, label = count), hjust = -0.8
+      , vjust = -1, size = 5, color = "black", fontface = "bold", angle = 360) +
+#xlab("Attrition State") +
+#ylab("No of Employees") + 
+
+labs(title = "Employees by Attrition", x = "Attrition"
+     , y = "Number of Employees") + 
+theme(plot.title=element_text(hjust=0.5), plot.subtitle=element_text(hjust=0.5))
+# To centre align Title and SubTitle
+
+attritionnumbers
+```
+
+```{r}
+# Display the percentage of 2 different status of Attrition
+
+attritionpercent <- employee %>%
+group_by(Attrition) %>%
+summarise(count  = n()) %>%
+mutate(pct = prop.table(count)*100) %>%
+ggplot(aes(x = Attrition, y = pct)) +
+geom_col(fill = "skyblue", color = "grey40") +
+geom_text(aes(x = Attrition, y = 0.01, label = sprintf("%0.2f%%",pct))
+          , vjust = -2, size = 5, fontface = "bold") +
+theme_bw() +
+labs(title = "Attrition %", x = "Attrition", y = "% of Employees") +
+theme(plot.title=element_text(hjust=0.5), plot.subtitle = element_text(hjust = 0.5))
+
+attritionpercent
+```
+
+
+## EDA_Demographic
+Display attrition along with the Age predictor
+```{r}
+dp1 <- ggplot(employee, aes(Age, fill = Attrition)) + geom_density(alpha = 0.5) + ggtitle("Age")
+dp1
+
+
+# Form dp1, we can find employees who are around 32 years old have the most 
+# chance to quit IBM.
+```
+
+Display attrition along with the Gender predictor
+```{r}
+Employee %>%
+select(Attrition, Gender) %>%
+group_by(Attrition, Gender) %>%
+summarise(count = n()) %>%
+ggplot(aes(x = Gender, y = count, fill = Attrition)) + 
+geom_col(position = "dodge") + 
+geom_text(aes(label = count), position = position_dodge(width = 1))
+```
+
+
+## EDA_Effects on employees
+Display Attrition along with the DistanceFromHome predictor
+```{r}
+dp2 <- ggplot(employee, aes(DistanceFromHome, fill = Attrition)) + 
+  geom_density(alpha = 0.5) + 
+  ggtitle("DistanceFromHome")
+
+dp2
+```
+
+Display Attrition along with the YearsAtCompany predictor
+```{r}
+employee %>% 
+    ggplot(aes(YearsAtCompany, fill = Attrition)) + geom_density(alpha = 0.5) +
+     ggtitle("Total Working Years and Attrition") 
+# Attrition probability is very high in the employees’ first 5 years in the
+# company. After the 4th year, the attrition probability is decreasing.
+```
+
+Display Attrition along with the Total working years
+```{r}
+ggplot(employee, aes(x= TotalWorkingYears, fill = Attrition, 
+                    colour = Attrition, alpha = .3)) +
+  geom_density()+ ggtitle("Total working years") 
+```
+
+Display Attrition along with the Distance from home
+```{r}
+d<-ggplot(employee, aes(x= DistanceFromHome, fill = Attrition, 
+                    colour = Attrition, alpha = .3)) +
+  geom_density()+ ggtitle("Distance From Home ") 
+ggsave(d,filename = "distance.png",width = 12,height = 9)
+```
+
+
+## EDA_Financial
+Display the distribution of monthly income
+```{r}
+ggplot(employee, aes(x = MonthlyIncome, fill = Attrition, 
+                    colour = Attrition, alpha = .3)) +
+  geom_density()+ ggtitle("monthly income ") 
+# we can see when employee's wage equals 2500, they are most willing to quit. 
+# After that, the attrition probability is decreasing.
+```
+
+
+## EDA_Professional background
+Display Attrition along with the education field predictor
+```{r}
+df<- read.csv("Employee.csv", header = TRUE)
+attritionbyeducationfield <- df %>%
+select(Attrition, EducationField) %>%
+group_by(EducationField, Attrition) %>%
+summarise(count = n())%>%
+mutate(prcnt = prop.table(count)*100) %>%
+ggplot(aes(x = Attrition, y = count, fill = EducationField)) +
+geom_col(position = "dodge", alpha = 0.8) + 
+geom_text(aes(x = Attrition, y = count, label = sprintf("%0.02f%%", prcnt)), position = position_dodge(width = 1), size = 3, fontface = "bold") + 
+labs(title = "Attrition by EducationField", x = "Attrition", y = "No. of Employees") + 
+theme_light() + 
+theme(plot.title = element_text(hjust = 0.5, size = 20)) + 
+theme(legend.position="bottom")
+
+attritionbyeducationfieldinnumbers <- df %>%
+select(Attrition, EducationField) %>%
+filter(Attrition == "Yes") %>%
+group_by(EducationField, Attrition) %>%
+summarise(count = n())%>%
+mutate(prcnt = prop.table(count)*100) %>%
+ggplot(aes(x = Attrition, y = count, fill = EducationField)) +
+geom_col(position = "dodge", alpha = 0.8, show.legend = FALSE) + 
+geom_text(aes(x = Attrition, y = count, label = count), position = position_dodge(width = 1), size = 3, fontface = "bold") + 
+labs(title = "Attrition by EducationField", x = "Attrition", y = "No. of Employees") + 
+theme_light() + 
+theme(plot.title = element_text(hjust = 0.5, size = 20))
+
+attritionbyeducationfield
+attritionbyeducationfieldinnumbers
+```
+
+
+## EDA_Job feature
+Display Attrition along with the Job involvement predictor
+```{r}
+df %>%
+select(Attrition, JobInvolvement) %>%
+group_by(Attrition, JobInvolvement) %>%
+summarise(count = n()) %>%
+ggplot(aes(x = JobInvolvement, y = count, fill = Attrition)) + 
+geom_col(position = "dodge") + 
+geom_text(aes(label = count), position = position_dodge(width = 1))
+```
+
+Display Attrition along with the Business travel predictor
+```{r}
+attrition_businesstravel <- employee_nl[ , c(2,50)]
+attrition_businesstravel$Attrtion <- as.numeric(attrition_businesstravel$Attrition)
+cor(attrition_businesstravel$Attrtion, attrition_businesstravel$BusinessTravel) 
+
+plot(attrition_businesstravel$Attrtion, attrition_businesstravel$BusinessTravel,        
+     main= "the relationship between Attrtion and BusinessTravel",
+     xlab="BusinessTravel",        
+     ylab="Attrtion")
+```
+
+Display Attrition along with the JobRole predictor
+```{r}
+library(ggplot2)
+D <- ggplot(employee,aes(JobRole ,fill=Attrition))+geom_bar()
+pie <- D + coord_polar("y", start=0) 
+pie 
+xtabs(~Attrition+JobRole,data=employee)
+```
+
+Display Attrition along with the OverTime predictor
+```{r}
+df %>%
+select(Attrition, OverTime) %>%
+group_by(Attrition, OverTime) %>%
+summarise(count = n()) %>%
+ggplot(aes(x = OverTime, y = count, fill = Attrition)) + 
+geom_col(position = "dodge") + 
+geom_text(aes(label = count), position = position_dodge(width = 1))
+```
+
+
+## Coefficient plot for logistic regression
+```{r}
+df_numeric <- sapply(employee[,1:31], as.numeric)
+data_emp <- data.table(df_numeric)
+lor <- glm(formula = data_emp$Attrition ~ ., data = data_emp)
+coe_plot_lor <- coefplot(lor, intercept=FALSE, col= "purple", title = "Coefficient Plot for Employee Attrition")
+coe_plot_lor
+```
+
+
+
+### Step 4_Feature Selection
+```{r}
+# Using random forest to select the most important feature
+
+install.packages("randomForest")
+install.packages("plyr")
+library(randomForest)
+library(plyr)
+
+set.seed(123)
+employee_full=randomForest(Attrition~., data=employee_nl, ntree=500)
+employee_importance <- importance(employee_full)
+employee_varImportance <- data.frame(Variables = row.names(employee_importance), 
+                            Importance = employee_importance[ ,'MeanDecreaseGini'])
+employee_varImportance <- as.data.frame(employee_varImportance)
+max(employee_varImportance$Importance)
+employee_varImportance_sort <- arrange(employee_varImportance,desc(Importance))
+```
+
+```{r}
+head(employee_varImportance_sort,n=10)
+
+# MonthlyIncome is the most important level in considering attrition
+```
+
+
+
+### Step 5_Machine Learning models
+## Random Forest
+```{r}
+# Load library
+library(e1071)
+library(MASS) 
+library(leaps)
+library(FNN)
+library(class)
+library(caret)
+library(gmodels)
+
+set.seed(123)
+Train <- sample(nrow(employee_nl),as.integer(nrow(employee_nl)*0.70))
+train_set_e = employee_nl[Train,]      ### training dataset 
+test_set_e = employee_nl[-Train,]      ### test dataset
+```
+
+step1 create train and test labels 
+```{r}
+train_labels_e <- train_set_e [,50]
+test_labels_e <- test_set_e[, 50]
+test_set_e <- test_set_e[, -50]
+```
+
+step2 create model control 
+```{r}
+ctrl <- trainControl(method="repeatedcv", number =10, repeats=3)  
+
+# cross-validation
+```
+
+step3 running the model using Random Forest
+```{r}
+set.seed(123)
+RFmodel <- train(Attrition ~ ., data= train_set_e, method="rf", ntree=500, trControl = ctrl)
+test_predRF_e <- predict(RFmodel, test_set_e)
+
+
+cf_RF_e <- confusionMatrix(as.factor(test_predRF_e), as.factor(test_labels_e), positive="1" , mode = "everything")
+print(cf_RF_e)
+```
+
+
+## KNN classifier
+```{r}
+# Load library
+
+library(MASS) 
+library(leaps)
+library(FNN)
+library(class)
+library(caret)
+library(gmodels)
+library(e1071)
+```
+
+Split the dataframe into traing set and testing set (70:30 train:test ratio)
+```{r}
+set.seed(123)
+employee_train <- sample(nrow(employee_nl), floor(nrow(employee_nl)*0.7))  
+ktrain <- employee_nl[employee_train,]  
+ktest <- employee_nl[-employee_train,]
+train_labelsKNN <- ktrain[,50]   
+test_labelsKNN <- ktest[,50]     
+train_KNN <- ktrain[,-50]  
+test_KNN <- ktest[,-50] 
+```
+
+Find the best value of k in which k has the value of FN’s as low as possible
+```{r}
+x <- 0
+for (i in 1:sqrt(nrow(ktrain)))        # k start at 1
+{
+set.seed(123)
+employeeKNNmodel <- knn(train =train_KNN, test = test_KNN, 
+                        cl = train_labelsKNN, k = i)  
+
+employee_predicted <- confusionMatrix(as.factor(employeeKNNmodel), 
+                                      as.factor(test_labelsKNN),
+                                  mode = "everything")
+
+fn <- employee_predicted$table[[1,2]]  # get the false negative value
+x[i] <- fn
+print(paste(i,fn))  
+}
+
+plot(x, type="l", col="red")
+which.min(x)
+```
+
+Display all performance measures of the KNN classifier when k = best value of k
+```{r}
+set.seed(123)
+employeeKNNmodel <- knn(train =train_KNN , test = test_KNN, 
+                        cl = train_labelsKNN , k = 11) 
+
+employee_predicted <- confusionMatrix(as.factor(employeeKNNmodel), 
+                                      as.factor(test_labelsKNN),
+                                  mode = "everything")
+ct <- CrossTable(x=test_labelsKNN, y=employeeKNNmodel, prop.chisq=FALSE)
+
+employee_predicted     # display confusion matrix
+ct                     # display cross table 
+```
+
+
+## SVM
+create train and test set
+```{r}
+set.seed(123)
+employee_train_svm <- sample(nrow(employee_nl),as.integer(nrow(employee_nl)*0.70))
+train_set_employee_svm = employee_nl[employee_train_svm,]      
+test_set_employee_svm = employee_nl[-employee_train_svm,] 
+```
+
+```{r}
+#create train and test label
+train_labels_employee_svm <- train_set_employee_svm[,50]
+test_labels_employee_svm <- test_set_employee_svm[, 50]
+test_set_employee_svm <- test_set_employee_svm[,-50]
+
+install.packages('kernlab')
+library(kernlab)
+install.packages("e1071")
+library(e1071)
+set.seed(123)
+
+employee_ctrl_svm <- trainControl(method="repeatedcv", number =10, repeats=3)
+SVMmodel_employee <- train(Attrition ~ ., data= train_set_employee_svm, method="svmPoly", trControl = employee_ctrl_svm)
+test_predSVM_employee <- predict(SVMmodel_employee, test_set_employee_svm)
+cf_SVM_employee <- confusionMatrix(as.factor(test_predSVM_employee), as.factor(test_labels_employee_svm), positive="1" , mode = "everything")
+print(cf_SVM_employee)
+```
+
+split dataset to training and testing
+```{r}
+library(caret)
+set.seed(123)
+Train_e <- sample(nrow(employee_nl),as.integer(nrow(employee_nl)*0.70))
+train_set_e <- employee_nl[Train_e,]      ### training dataset
+test_set_e <- employee_nl[-Train_e,]      ### test dataset
+
+train_labels_e <- train_set_e[, 50]
+test_labels_e <- test_set_e[, 50]
+test_set_e <- test_set_e[,-50]
+```
+
+logistic regression with all IVs
+```{r}
+set.seed(123)
+library(caret)
+library(e1071)
+ctrl <- trainControl(method="repeatedcv", number =10, repeats=3)  #cross-validation
+LRmodel_e <- train(Attrition ~ ., data= train_set_e, method="glm", trControl = ctrl)
+test_predLR_e<- predict(LRmodel_e, test_set_e)
+cf_LR_e <- confusionMatrix(as.factor(test_predLR_e), as.factor(test_labels_e), mode = "everything")
+print(cf_LR_e)
+
+# the model accuracy is 0.8753 
+```
+
+ROC Curve for LR
+```{r}
+install.packages("ROCR")
+library(ROCR)
+ROCRpred <- prediction(as.numeric(test_predLR_e), as.numeric(test_labels_e))
+ROCRpref <- performance(ROCRpred,"auc")
+auc_lr <- as.numeric(ROCRpref@y.values)
+perf_ROC <- performance(ROCRpred,"tpr","fpr") #plot the actual ROC curve
+plot(perf_ROC, main="ROC plot")
+text(0.5,0.5,paste("AUC = ",format(auc_lr, digits=5, scientific=FALSE)))
+
+#it means there is around 70% chance that model will be able to distinguish between positive class and negative class.
+```
+
+
+## NB
+split dataset to training and testing
+```{r}
+set.seed(123)
+Train <- sample(nrow(employee_nl),as.integer(nrow(employee_nl)*0.70))
+train_set = employee_nl[Train,]      ### training dataset 
+test_set = employee_nl[-Train,]
+```
+
+```{r}
+# create train and test label
+train_labels <- train_set[,50]
+test_labels <- test_set[, 50]
+test_set <- test_set[,-50]
+
+install.packages('kernlab')
+library(kernlab)
+install.packages("e1071")
+library(e1071)
+library(caret)
+install.packages("naivebayes")
+library(naivebayes)
+
+ctrl <- trainControl(method="repeatedcv", number =10, repeats=3)
+set.seed(123)
+NBmodel <- train(Attrition ~ ., data= train_set, method="naive_bayes", trControl = ctrl)
+test_predNB <- predict(NBmodel, test_set)
+cf_NB <- confusionMatrix(as.factor(test_predNB), as.factor(test_labels), mode = "everything")
+print(cf_NB)
+```
+
+
+## Ensemble models
+Design ensemble models for the employee dataset
+```{r}
+library(caretEnsemble)
+control <- trainControl(method="repeatedcv", number = 10, repeats=3, savePredictions="final", classProbs=TRUE)
+algorithmList <- c('rf', 'svmPoly', 'glm', 'naive_bayes')
+set.seed(123)
+models_prc <- caretList(Attrition~. , data=employee_nl, trControl=control, methodList=algorithmList)
+set.seed(123)
+results_prc <- resamples(models_prc)
+summary(results_prc)
+dotplot(results_prc)
+modelCor(results_prc)
+```
+
+remove glm since glm and svm have a corelated >0.75 and glm have a slight lower accuracy compare with svm so I will remove glm model and creat a new ensemble model again
+```{r}
+algorithmList2 <- c('rf', 'svmPoly', 'naive_bayes')
+set.seed(123)
+models2_prc <- caretList(Attrition~. , data=employee_nl, trControl=control, methodList=algorithmList2)
+set.seed(123)
+results2_prc <- resamples(models2_prc)
+summary(results2_prc)
+dotplot(results2_prc)
+modelCor(results2_prc)
+```
+
+combine predictions of the final models used using stack with RF
+```{r}
+stackControl <- trainControl(method="repeatedcv", number=10, repeats=3, savePredictions=TRUE, classProbs=TRUE)
+set.seed(340)
+stack.rf <- caretStack(models2_prc, method="rf", metric="Accuracy", trControl=stackControl)
+print(stack.rf)  ##ensemble model
+```
+
+predict stack.rf on the test dataset and check its confusion matrix
+```{r}
+stack.pred <- predict(stack.rf , test_set)
+cf_ensemble_prc <- confusionMatrix(as.factor(stack.pred), as.factor(test_labels) , positive="yes", mode = "everything")
+print(cf_ensemble_prc)
+```
+
+
